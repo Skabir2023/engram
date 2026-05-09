@@ -1,11 +1,17 @@
 #!/bin/bash
 # =============================================================
 # setup-context.sh
-# Works for both NEW and EXISTING projects.
-# - New project      → creates all files with your input
-# - Existing project → scans codebase, auto-detects stack,
-#                      pre-fills memory files from real code
-# - Already has .ai-context/ → merge (add missing) or reset
+#
+# USAGE:
+#   /your-project/
+#   └── engram/          ← git clone lands here
+#       └── setup-context.sh
+#
+#   cd your-project/engram
+#   ./setup-context.sh
+#
+# All files are created in the PARENT directory (your-project/).
+# The engram/ folder self-deletes when setup is complete.
 # =============================================================
 
 set -e
@@ -20,30 +26,38 @@ NC='\033[0m'
 TODAY=$(date '+%Y-%m-%d')
 NOW=$(date '+%Y-%m-%d %H:%M')
 
+# -------------------------------------------------------
+# TARGET = parent directory of wherever this script lives
+# -------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET="$(dirname "$SCRIPT_DIR")"
+TARGET_NAME="$(basename "$TARGET")"
+
 echo -e "${BLUE}"
 echo "================================================"
-echo "   AI Memory Setup"
+echo "   engram — AI Memory Setup"
 echo "================================================"
 echo -e "${NC}"
+echo "Target directory: $TARGET"
+echo ""
 
 # -------------------------------------------------------
-# STEP 1 — Detect: new / existing / already has memory
+# STEP 1 — Detect mode
 # -------------------------------------------------------
 
 HAS_CODE=false
 HAS_CONTEXT=false
 PROJECT_MODE="new"
 
-if [ -d ".ai-context" ]; then
-  HAS_CONTEXT=true
-fi
+[ -d "$TARGET/.ai-context" ] && HAS_CONTEXT=true
 
-CODE_FILES=$(find . -maxdepth 3 \
-  -not -path './.git/*' \
-  -not -path './.ai-context/*' \
-  -not -path './node_modules/*' \
-  -not -path './.venv/*' \
-  -not -path './venv/*' \
+CODE_FILES=$(find "$TARGET" -maxdepth 3 \
+  -not -path "$TARGET/.git/*" \
+  -not -path "$TARGET/.ai-context/*" \
+  -not -path "$TARGET/node_modules/*" \
+  -not -path "$TARGET/.venv/*" \
+  -not -path "$TARGET/venv/*" \
+  -not -path "$SCRIPT_DIR/*" \
   \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" \
      -o -name "*.go" -o -name "*.rs" -o -name "*.java" -o -name "*.php" \
      -o -name "*.rb" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" \
@@ -54,10 +68,10 @@ CODE_FILES=$(find . -maxdepth 3 \
 [ -n "$CODE_FILES" ] && HAS_CODE=true
 
 if $HAS_CONTEXT; then
-  echo -e "${YELLOW}⚠ .ai-context/ already exists in this directory.${NC}"
+  echo -e "${YELLOW}⚠ .ai-context/ already exists in $TARGET_NAME/.${NC}"
   echo ""
   echo "  1) Add missing files only — safe, keeps existing memory"
-  echo "  2) Full reset — overwrites everything (loses existing memory)"
+  echo "  2) Full reset — overwrites everything"
   echo "  3) Exit"
   echo ""
   read -p "Choose (1-3): " EXIST_CHOICE
@@ -68,19 +82,18 @@ if $HAS_CONTEXT; then
     *) echo -e "${RED}Invalid choice.${NC}"; exit 1 ;;
   esac
 elif $HAS_CODE; then
-  echo -e "${CYAN}Existing project detected — source files found.${NC}"
-  echo "Running in EXISTING PROJECT mode: codebase will be scanned"
-  echo "and memory files pre-filled automatically."
+  echo -e "${CYAN}Existing project detected in $TARGET_NAME/.${NC}"
+  echo "Running in EXISTING PROJECT mode — scanning codebase."
   echo ""
   PROJECT_MODE="existing"
 else
-  echo -e "${CYAN}Empty directory — running in NEW PROJECT mode.${NC}"
+  echo -e "${CYAN}Empty project directory — running in NEW PROJECT mode.${NC}"
   echo ""
   PROJECT_MODE="new"
 fi
 
 # -------------------------------------------------------
-# STEP 2 — Collect project info
+# STEP 2 — Project info
 # -------------------------------------------------------
 
 read -p "Project name: " PROJECT_NAME
@@ -88,7 +101,7 @@ read -p "Short description (one line): " PROJECT_DESC
 read -p "Your name or team name: " AUTHOR
 
 # -------------------------------------------------------
-# STEP 3 — Auto-detect stack (existing / merge modes)
+# STEP 3 — Auto-detect stack
 # -------------------------------------------------------
 
 LANG=""
@@ -99,10 +112,17 @@ FOLDER_STRUCTURE=""
 
 if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "merge" ] || [ "$PROJECT_MODE" = "reset" ]; then
   echo ""
-  echo -e "${YELLOW}Scanning codebase...${NC}"
+  echo -e "${YELLOW}Scanning $TARGET_NAME/...${NC}"
 
-  # Detect primary language by file count
-  count_files() { find . -name "$1" -not -path './.git/*' -not -path './node_modules/*' -not -path './.venv/*' -not -path './venv/*' 2>/dev/null | wc -l | tr -d ' '; }
+  count_files() {
+    find "$TARGET" -name "$1" \
+      -not -path "$TARGET/.git/*" \
+      -not -path "$TARGET/node_modules/*" \
+      -not -path "$TARGET/.venv/*" \
+      -not -path "$TARGET/venv/*" \
+      -not -path "$SCRIPT_DIR/*" \
+      2>/dev/null | wc -l | tr -d ' '
+  }
 
   PY=$(count_files "*.py")
   TS=$(( $(count_files "*.ts") + $(count_files "*.tsx") ))
@@ -121,10 +141,9 @@ if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "merge" ] || [ "$PROJ
   [ "$JV" -gt "$MAX" ] 2>/dev/null && MAX=$JV && LANG="Java"
   [ "$MAX" -eq 0 ] && LANG="(not detected — fill in manually)"
 
-  # Detect frameworks
   FW=""
-  if [ -f "package.json" ]; then
-    PKG=$(cat package.json)
+  if [ -f "$TARGET/package.json" ]; then
+    PKG=$(cat "$TARGET/package.json")
     echo "$PKG" | grep -q '"next"'        && FW="$FW Next.js,"
     echo "$PKG" | grep -q '"react"'       && FW="$FW React,"
     echo "$PKG" | grep -q '"vue"'         && FW="$FW Vue,"
@@ -138,7 +157,7 @@ if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "merge" ] || [ "$PROJ
     echo "$PKG" | grep -q '"drizzle"'     && FW="$FW Drizzle ORM,"
     echo "$PKG" | grep -q '"trpc"'        && FW="$FW tRPC,"
   fi
-  for REQ in requirements.txt pyproject.toml setup.py; do
+  for REQ in "$TARGET/requirements.txt" "$TARGET/pyproject.toml" "$TARGET/setup.py"; do
     if [ -f "$REQ" ]; then
       grep -qi "fastapi"    "$REQ" 2>/dev/null && FW="$FW FastAPI,"
       grep -qi "django"     "$REQ" 2>/dev/null && FW="$FW Django,"
@@ -149,24 +168,27 @@ if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "merge" ] || [ "$PROJ
       grep -qi "pytest"     "$REQ" 2>/dev/null && FW="$FW pytest,"
     fi
   done
-  if [ -f "Cargo.toml" ]; then
-    grep -qi "actix" Cargo.toml && FW="$FW Actix,"
-    grep -qi "axum"  Cargo.toml && FW="$FW Axum,"
-    grep -qi "tokio" Cargo.toml && FW="$FW Tokio,"
-  fi
-  if [ -f "go.mod" ]; then
-    grep -qi "gin"   go.mod && FW="$FW Gin,"
-    grep -qi "echo"  go.mod && FW="$FW Echo,"
-    grep -qi "fiber" go.mod && FW="$FW Fiber,"
-  fi
-  FRAMEWORKS=$(echo "$FW" | sed 's/^ //;s/,$//' | tr ',' ',' | sed 's/,/, /g')
+  [ -f "$TARGET/Cargo.toml" ] && {
+    grep -qi "actix" "$TARGET/Cargo.toml" && FW="$FW Actix,"
+    grep -qi "axum"  "$TARGET/Cargo.toml" && FW="$FW Axum,"
+    grep -qi "tokio" "$TARGET/Cargo.toml" && FW="$FW Tokio,"
+  }
+  [ -f "$TARGET/go.mod" ] && {
+    grep -qi "gin"   "$TARGET/go.mod" && FW="$FW Gin,"
+    grep -qi "echo"  "$TARGET/go.mod" && FW="$FW Echo,"
+    grep -qi "fiber" "$TARGET/go.mod" && FW="$FW Fiber,"
+  }
+  FRAMEWORKS=$(echo "$FW" | sed 's/^ //;s/,$//' | sed 's/,/, /g')
   [ -z "$FRAMEWORKS" ] && FRAMEWORKS="(not detected — fill in manually)"
 
-  # Detect database
   DB=""
-  ALL_CFG=$(find . -maxdepth 4 -not -path './.git/*' -not -path './node_modules/*' \
-    \( -name ".env" -o -name ".env*" -o -name "docker-compose*" -o -name "*.yaml" \
-       -o -name "*.yml" -o -name "*.toml" -o -name "requirements.txt" -o -name "package.json" \) \
+  ALL_CFG=$(find "$TARGET" -maxdepth 4 \
+    -not -path "$TARGET/.git/*" \
+    -not -path "$TARGET/node_modules/*" \
+    -not -path "$SCRIPT_DIR/*" \
+    \( -name ".env" -o -name ".env*" -o -name "docker-compose*" \
+       -o -name "*.yaml" -o -name "*.yml" -o -name "*.toml" \
+       -o -name "requirements.txt" -o -name "package.json" \) \
     2>/dev/null | xargs cat 2>/dev/null || true)
   echo "$ALL_CFG" | grep -qi "postgresql\|postgres" && DB="$DB PostgreSQL,"
   echo "$ALL_CFG" | grep -qi "mysql\|mariadb"       && DB="$DB MySQL,"
@@ -176,25 +198,27 @@ if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "merge" ] || [ "$PROJ
   echo "$ALL_CFG" | grep -qi "supabase"             && DB="$DB Supabase,"
   echo "$ALL_CFG" | grep -qi "firebase"             && DB="$DB Firebase,"
   echo "$ALL_CFG" | grep -qi "dynamodb"             && DB="$DB DynamoDB,"
-  DATABASE=$(echo "$DB" | sed 's/^ //;s/,$//' | tr ',' ',' | sed 's/,/, /g')
+  DATABASE=$(echo "$DB" | sed 's/^ //;s/,$//' | sed 's/,/, /g')
   [ -z "$DATABASE" ] && DATABASE="(not detected — fill in manually)"
 
   echo -e "${GREEN}  Language:   $LANG${NC}"
   echo -e "${GREEN}  Frameworks: $FRAMEWORKS${NC}"
   echo -e "${GREEN}  Database:   $DATABASE${NC}"
 
-  DETECTED_STACK_NOTE="Auto-detected by setup-context.sh on $TODAY. Verify and correct if needed."
+  DETECTED_STACK_NOTE="Auto-detected by engram/setup-context.sh on $TODAY. Verify and correct if needed."
 
-  # Capture folder structure
-  FOLDER_STRUCTURE=$(find . -maxdepth 3 \
-    -not -path './.git/*' -not -path './node_modules/*' \
-    -not -path './.venv/*' -not -path './venv/*' \
-    -not -path './.ai-context/*' \
-    -not -name "*.pyc" -not -name ".DS_Store" \
-    2>/dev/null | sort | head -60 | sed 's|^\./||')
+  FOLDER_STRUCTURE=$(find "$TARGET" -maxdepth 3 \
+    -not -path "$TARGET/.git/*" \
+    -not -path "$TARGET/node_modules/*" \
+    -not -path "$TARGET/.venv/*" \
+    -not -path "$TARGET/venv/*" \
+    -not -path "$TARGET/.ai-context/*" \
+    -not -path "$SCRIPT_DIR/*" \
+    -not -name "*.pyc" \
+    -not -name ".DS_Store" \
+    2>/dev/null | sort | head -60 | sed "s|$TARGET/||" | sed "s|$TARGET||")
 
 else
-  # New project — manual input
   read -p "Primary language (e.g. Python, TypeScript): " LANG
   read -p "Frameworks/libraries (e.g. FastAPI, React): " FRAMEWORKS
   read -p "Database (e.g. PostgreSQL, MongoDB, none): " DATABASE
@@ -203,26 +227,25 @@ else
 fi
 
 # -------------------------------------------------------
-# STEP 4 — Write files
+# STEP 4 — Write all files into TARGET (parent directory)
 # -------------------------------------------------------
 
 echo ""
-echo -e "${YELLOW}Writing memory files...${NC}"
-mkdir -p .ai-context
+echo -e "${YELLOW}Writing memory files to $TARGET_NAME/...${NC}"
+mkdir -p "$TARGET/.ai-context"
 
-# Only write if file does not exist in merge mode
 write_file() {
-  local PATH="$1"
+  local FPATH="$1"
   local BODY="$2"
-  if [ "$PROJECT_MODE" = "merge" ] && [ -f "$PATH" ]; then
-    echo -e "${CYAN}  skipped (exists): $PATH${NC}"
+  if [ "$PROJECT_MODE" = "merge" ] && [ -f "$FPATH" ]; then
+    echo -e "${CYAN}  skipped (exists): $(basename $FPATH)${NC}"
   else
-    printf '%s\n' "$BODY" > "$PATH"
-    echo -e "${GREEN}  written: $PATH${NC}"
+    printf '%s\n' "$BODY" > "$FPATH"
+    echo -e "${GREEN}  written: $(basename $(dirname $FPATH))/$(basename $FPATH)${NC}"
   fi
 }
 
-write_file ".ai-context/ARCHITECTURE.md" "# Architecture — $PROJECT_NAME
+write_file "$TARGET/.ai-context/ARCHITECTURE.md" "# Architecture — $PROJECT_NAME
 
 **Created:** $TODAY
 **Author:** $AUTHOR
@@ -244,7 +267,7 @@ $FOLDER_STRUCTURE
 ## Key Design Choices
 <!-- Why is the project structured this way? -->"
 
-write_file ".ai-context/TECH_STACK.md" "# Tech Stack — $PROJECT_NAME
+write_file "$TARGET/.ai-context/TECH_STACK.md" "# Tech Stack — $PROJECT_NAME
 
 **Created:** $TODAY
 **Note:** $DETECTED_STACK_NOTE
@@ -267,7 +290,7 @@ $DATABASE
 # Add setup commands here as you build
 \`\`\`"
 
-write_file ".ai-context/CONVENTIONS.md" "# Code Conventions — $PROJECT_NAME
+write_file "$TARGET/.ai-context/CONVENTIONS.md" "# Code Conventions — $PROJECT_NAME
 
 **Created:** $TODAY
 
@@ -290,7 +313,7 @@ write_file ".ai-context/CONVENTIONS.md" "# Code Conventions — $PROJECT_NAME
 - Add comments for any non-obvious logic
 - Do not remove existing comments without reason"
 
-write_file ".ai-context/DECISIONS.md" "# Decisions Log — $PROJECT_NAME
+write_file "$TARGET/.ai-context/DECISIONS.md" "# Decisions Log — $PROJECT_NAME
 
 **Created:** $TODAY
 
@@ -313,7 +336,7 @@ AI agents must read this before suggesting architectural changes.
 - Trade-offs accepted
 -->"
 
-write_file ".ai-context/TASKS.md" "# Tasks — $PROJECT_NAME
+write_file "$TARGET/.ai-context/TASKS.md" "# Tasks — $PROJECT_NAME
 
 **Created:** $TODAY
 **Update this file at the start of every session.**
@@ -345,12 +368,12 @@ if [ "$PROJECT_MODE" = "existing" ] || [ "$PROJECT_MODE" = "reset" ]; then
 - Next: fill in TASKS.md with current priorities and ARCHITECTURE.md with system design"
 else
   FIRST_ENTRY="## $NOW — Project initialized by $AUTHOR
-- Set up AI memory structure
+- Set up AI memory structure via engram
 - Tech stack: $LANG / $FRAMEWORKS / $DATABASE
 - No code written yet"
 fi
 
-write_file ".ai-context/PROGRESS.md" "# Progress Log — $PROJECT_NAME
+write_file "$TARGET/.ai-context/PROGRESS.md" "# Progress Log — $PROJECT_NAME
 
 **Created:** $TODAY
 
@@ -369,8 +392,7 @@ $FIRST_ENTRY
 - What to do next
 -->"
 
-# Root config files
-write_file "AGENTS.md" "# $PROJECT_NAME — Agent Rules
+write_file "$TARGET/AGENTS.md" "# $PROJECT_NAME — Agent Rules
 
 ## Memory — read first, always
 Before doing anything read ALL files in .ai-context/ in this order:
@@ -392,7 +414,7 @@ Before doing anything read ALL files in .ai-context/ in this order:
 - Ask before deleting any file
 - Run tests after every code change"
 
-write_file "CLAUDE.md" "# $PROJECT_NAME — Claude Code Rules
+write_file "$TARGET/CLAUDE.md" "# $PROJECT_NAME — Claude Code Rules
 
 ## On startup
 Read all files in .ai-context/ before doing any work.
@@ -405,7 +427,7 @@ Format: ## YYYY-MM-DD HH:MM — Claude Code session
 ## Conventions
 Follow CONVENTIONS.md strictly."
 
-write_file "GEMINI.md" "# $PROJECT_NAME — Gemini CLI Rules
+write_file "$TARGET/GEMINI.md" "# $PROJECT_NAME — Gemini CLI Rules
 
 ## On startup
 Read all files in .ai-context/ before doing any work.
@@ -417,19 +439,58 @@ Format: ## YYYY-MM-DD HH:MM — Gemini CLI session
 ## Conventions
 Follow CONVENTIONS.md strictly."
 
-# .gitignore
-if [ -f .gitignore ]; then
-  grep -q "ai-context" .gitignore 2>/dev/null || printf "\n# AI memory logs\n# .ai-context/PROGRESS.md\n" >> .gitignore
+write_file "$TARGET/KILO.md" "# $PROJECT_NAME — Kilo Code Rules
+
+## On startup
+Read all files in .ai-context/ before doing any work.
+Start by checking what TASKS.md says is active right now.
+
+## On session end
+Append to .ai-context/PROGRESS.md before stopping.
+Format: ## YYYY-MM-DD HH:MM — Kilo Code session
+
+## Conventions
+Follow CONVENTIONS.md strictly.
+
+## Kilo-specific
+Kilo Code uses .kilocode/skills/ folder for custom extensions.
+Store project-specific skills there but always read .ai-context/
+for the source of truth about project memory."
+
+# .gitignore in target
+if [ -f "$TARGET/.gitignore" ]; then
+  grep -q "ai-context" "$TARGET/.gitignore" 2>/dev/null || \
+    printf "\n# AI memory logs\n# .ai-context/PROGRESS.md\n" >> "$TARGET/.gitignore"
 else
-  printf "# AI memory logs\n# .ai-context/PROGRESS.md\n" > .gitignore
+  printf "# AI memory logs\n# .ai-context/PROGRESS.md\n" > "$TARGET/.gitignore"
+fi
+echo -e "${GREEN}  written: .gitignore${NC}"
+
+# Also copy update-context.sh to target so it's available in the project
+if [ -f "$SCRIPT_DIR/update-context.sh" ]; then
+  cp "$SCRIPT_DIR/update-context.sh" "$TARGET/update-context.sh"
+  chmod +x "$TARGET/update-context.sh"
+  echo -e "${GREEN}  copied:  update-context.sh${NC}"
 fi
 
 # -------------------------------------------------------
-# STEP 5 — Summary
+# STEP 5 — Self-delete engram directory
 # -------------------------------------------------------
+
+echo ""
+echo -e "${YELLOW}Removing engram/ setup directory...${NC}"
+cd "$TARGET"
+rm -rf "$SCRIPT_DIR"
+echo -e "${GREEN}  removed: engram/${NC}"
+
+# -------------------------------------------------------
+# STEP 6 — Summary
+# -------------------------------------------------------
+
 echo ""
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}   Done — $PROJECT_NAME${NC}"
+echo -e "${GREEN}   All files created in: $TARGET_NAME/${NC}"
 echo -e "${GREEN}================================================${NC}"
 echo ""
 
@@ -449,5 +510,14 @@ else
 fi
 
 echo ""
-echo "Then open Antigravity, Claude Code, or any tool — context loads automatically."
+echo -e "${CYAN}Supported AI tools — all read your .ai-context/ folder:${NC}"
+echo "  • Antigravity (AGENTS.md)"
+echo "  • Claude Code (CLAUDE.md)"
+echo "  • Gemini CLI (GEMINI.md)"
+echo "  • Kilo Code (KILO.md)"
+echo "  • OpenCode (AGENTS.md)"
+echo "  • Aider (pass --read .ai-context/TASKS.md)"
+echo ""
+echo "Then open any tool — context loads automatically."
+echo "To manually update memory later: ./update-context.sh"
 echo ""
