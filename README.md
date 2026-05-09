@@ -135,14 +135,14 @@ So after a normal session in Antigravity, Claude Code, or OpenCode, the AI write
 
 This is the main use case. Here is what happens in practice:
 
-**Scenario: Antigravity free limits exhausted, switching to OpenCode**
+**Scenario: Antigravity free limits exhausted, switching to Kilo Code**
 
 1. Antigravity's last session wrote its summary to `PROGRESS.md`
-2. Open OpenCode in Antigravity's integrated terminal
-3. OpenCode reads `AGENTS.md` → reads `.ai-context/` → reads `PROGRESS.md`
-4. OpenCode knows what was done last and what is next
-5. OpenCode does the work and writes its own `PROGRESS.md` entry
-6. Antigravity limits reset → next session reads `PROGRESS.md` → continues
+2. Open Kilo Code in Antigravity's integrated terminal (or standalone)
+3. Kilo Code reads `KILO.md` → reads `.ai-context/` → reads `PROGRESS.md`
+4. Kilo Code knows what was done last and what is next
+5. Kilo Code does the work and writes its own `PROGRESS.md` entry
+6. Antigravity limits reset → next Antigravity session reads `PROGRESS.md` → continues
 
 No context lost. No re-explaining the project. The markdown files carry state across every tool and across days.
 
@@ -155,6 +155,7 @@ No context lost. No re-explaining the project. The markdown files carry state ac
 | Antigravity (built-in agents) | `AGENTS.md` | Antigravity Agent Manager |
 | Claude Code | `CLAUDE.md` | Antigravity terminal or standalone |
 | Gemini CLI | `GEMINI.md` | Antigravity terminal or standalone |
+| Kilo Code | `KILO.md` | Antigravity terminal or standalone |
 | OpenCode | `AGENTS.md` | Antigravity terminal or standalone |
 | Aider | Pass files explicitly (see below) | Antigravity terminal |
 
@@ -164,6 +165,8 @@ For Aider, pass the context files on startup:
 aider --read .ai-context/TASKS.md --read .ai-context/PROGRESS.md
 ```
 
+**For Kilo Code**, it will automatically read `KILO.md` and your `.ai-context/` folder. Kilo also supports custom skills in `.kilocode/skills/` — you can add project-specific skills there, but always use `.ai-context/` as the source of truth for project memory.
+
 ---
 
 ## Free model strategy (zero cost)
@@ -172,6 +175,7 @@ aider --read .ai-context/TASKS.md --read .ai-context/PROGRESS.md
 |---|---|---|
 | Antigravity | Gemini 3.1 Pro (generous limits) | Main daily driver |
 | Claude Code | Claude Sonnet (free tier) | Complex reasoning, refactoring |
+| Kilo Code | 500+ free models (Groq, Ollama, local) | Multi-model flexibility, any task |
 | OpenCode + Groq | Llama 3.3 70B (free API at console.groq.com) | When Antigravity limits hit |
 | Aider + Groq | Llama 3.3 70B | Git-commit-level edits |
 | Ollama (local) | Qwen 2.5 Coder 7B | Offline or sensitive code |
@@ -241,4 +245,4 @@ End of day
 
 ---
 
-*Built for zero-cost multi-AI development using Antigravity, Claude Code, OpenCode, Gemini CLI, and Aider.*
+*Built for zero-cost multi-AI development using Antigravity, Claude Code, Gemini CLI, Kilo Code, OpenCode, and Aider.*
